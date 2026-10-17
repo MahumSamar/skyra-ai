@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Skyra AI — Airborne Safety</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #1c1a18;
+    --ink-soft: rgba(28, 26, 24, 0.72);
+    --orange: #ff7a1f;
+    --orange-deep: #f2650b;
+    --sky: #f3e3d0;
+    --glass: rgba(255, 255, 255, 0.28);
+    --glass-line: rgba(255, 255, 255, 0.55);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "Manrope", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--sky);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- fixed stage: cloud video + webgl ---------- */
+  .stage { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .stage video, .stage .poster {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .stage .poster { background: center / cover no-repeat; }
+  .stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+  .stage .tint {
+    position: absolute; inset: 0;
+    background: radial-gradient(120% 80% at 50% 45%, rgba(255,240,225,0) 40%, rgba(240,214,190,0.35) 100%);
+  }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    padding: 14px 30px;
+  }
+  nav .links { display: flex; gap: 30px; }
+  nav .links.right { justify-content: flex-end; align-items: center; }
+  nav a {
+    color: var(--ink); text-decoration: none; font-size: 16px; font-weight: 400;
+    transition: opacity .25s;
+  }
+  nav a:hover { opacity: .6; }
+  .logo { display: block; width: 42px; height: 42px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 50px; padding: 0 37px; border-radius: 999px;
+    background: var(--orange); color: #fff !important; font-size: 16px;
+    box-shadow: 0 8px 24px rgba(255, 122, 31, 0.28), inset 0 1px 0 rgba(255,255,255,.35);
+    transition: background .25s, transform .25s, opacity .25s !important;
+  }
+  .btn:hover { background: var(--orange-deep); transform: translateY(-1px); opacity: 1 !important; }
+
+  /* ---------- scroll track: two sections ---------- */
+  main { position: relative; z-index: 10; }
+  section { position: relative; height: 150vh; }
+  #hero { height: 150vh; }
+  #tracking { height: 150vh; }
+  .headline {
+    position: absolute; top: 17vh; left: 0; right: 0;
+    text-align: center; font-weight: 400;
+    font-size: clamp(34px, 3.6vw, 48px); line-height: 1.12; letter-spacing: -0.035em;
+    will-change: transform, opacity;
+  }
+
+  /* section 2 header (fades in while stage is pinned) */
+  .s2-head {
+    position: fixed; top: 92px; left: 0; right: 0; z-index: 15;
+    text-align: center; opacity: 0; transform: translateY(12px);
+    pointer-events: none; will-change: opacity, transform;
+  }
+  .s2-head small { display: block; font-size: 11px; letter-spacing: .02em; color: var(--ink-soft); }
+  .s2-head h2 { font-size: 19px; font-weight: 500; letter-spacing: -0.02em; margin: 2px 0 8px; }
+  .s2-head p { font-size: 11px; color: var(--ink-soft); margin-bottom: 8px; }
+  .s2-head .icons { display: flex; justify-content: center; gap: 7px; }
+  .s2-head .icons span {
+    width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center;
+    background: rgba(28,26,24,.72); color: #fff; font-size: 9px; font-weight: 600;
+  }
+  .s2-head.on { pointer-events: auto; }
+
+  /* glass caption pill — fixed, text swaps between sections */
+  .pill {
+    position: fixed; z-index: 15; left: 50%; bottom: 80px; transform: translateX(-50%);
+    width: min(494px, calc(100vw - 32px)); height: 100px; border-radius: 999px;
+    background: var(--glass);
+    border: 1px solid var(--glass-line);
+    backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    box-shadow: 0 10px 40px rgba(170, 120, 80, .12), inset 0 1px 0 rgba(255,255,255,.6);
+    display: grid; place-items: center; text-align: center;
+  }
+  .pill p {
+    grid-area: 1 / 1; font-size: 19px; line-height: 1.42; letter-spacing: -0.015em; color: #2c2925;
+    padding: 0 40px; will-change: opacity, filter;
+  }
+  .pill p.b { opacity: 0; }
+
+  .standin-badge {
+    position: fixed; left: 16px; bottom: 16px; z-index: 30; display: none;
+    font-size: 11px; padding: 6px 10px; border-radius: 8px;
+    background: rgba(28,26,24,.75); color: #fff;
+  }
+
+  @media (max-width: 760px) {
+    nav { padding: 12px 16px; }
+    nav .links.left a:not(:first-child), nav .links.right a:not(.btn) { display: none; }
+    .btn { height: 42px; padding: 0 22px; font-size: 14px; }
+    .pill { height: 84px; bottom: 40px; }
+    .pill p { font-size: 15px; padding: 0 24px; }
+    .headline { top: 15vh; padding: 0 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+  <div class="poster" id="poster"></div>
+  <video id="bg" autoplay muted loop playsinline preload="auto"></video>
+  <div class="tint"></div>
+</div>
+
+<nav>
+  <div class="links left">
+    <a href="#hero">Craft</a>
+    <a href="#tracking">Highlights</a>
+    <a href="#tracking">Connect</a>
+  </div>
+  <a href="#hero" aria-label="Skyra AI home">
+    <svg class="logo" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="M17 13c-6 4-9.5 11-8 17.5 1.3 5.7 6.4 8.4 11.6 6.8 6.8-2.1 11.4-9.6 12.6-17.6"
+            stroke="#1c1a18" stroke-width="4.2" stroke-linecap="round"/>
+      <path d="M26.5 21.5 34 8l5.5 14.5-6.7-3.3-6.3 2.3Z" fill="#1c1a18"/>
+      <path d="M22 16.5c-2.6 3.8-3.7 8.5-3 13" stroke="#1c1a18" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+  </a>
+  <div class="links right">
+    <a href="#tracking">Story</a>
+    <a class="btn" href="#tracking">Request</a>
+  </div>
+</nav>
+
+<main>
+  <section id="hero">
+    <h1 class="headline" id="headline">The next era of flight safety<br />enabled by Skyra AI</h1>
+  </section>
+  <section id="tracking"></section>
+</main>
+
+<div class="s2-head" id="s2head">
+  <small>Live intel from</small>
+  <h2>Skyra Predictive Avionics</h2>
+  <p>Join us in the sky</p>
+  <div class="icons"><span>in</span><span>X</span><span>◎</span></div>
+</div>
+
+<div class="pill" id="pill">
+  <p class="a">Equipping pilots with intelligent AI for safer, more efficient flight</p>
+  <p class="b">Live aircraft monitoring and forward-looking insights</p>
+</div>
+
+<div class="standin-badge" id="standin">Stand-in jet — Higgsfield 3D model pending</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+/* ===================== Higgsfield asset URLs ===================== */
+// Cloud plate (gpt_image_2_5) and animated clouds (Seedance 2.5, 16:9, 1080p, standard bitrate)
+const BG_IMAGE_URL = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20261016_130037_46341e32-6cd0-4fac-ad09-00d747e2f806.png";
+const BG_VIDEO_URL = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20261016_130129_cfe21363-8606-4dd9-a8cc-d19b6c24d2d7.mp4";
+// Multi-image-to-3D GLB of the orange/white jet (built from the reference sheet views)
+const MODEL_URL = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20261017_132803_66d7da07-a6ef-4081-976a-8cd35f92833c.glb";
+// Rotation that makes the GLB's nose point along +X with wings level
+const MODEL_ROTATION = new THREE.Euler(0, Math.PI, 0);
+
+/* ===================== background ===================== */
+document.getElementById("poster").style.backgroundImage = `url("${BG_IMAGE_URL}")`;
+const video = document.getElementById("bg");
+if (BG_VIDEO_URL) { video.src = BG_VIDEO_URL; video.poster = BG_IMAGE_URL; }
+else video.remove();
+
+/* ===================== renderer / scene ===================== */
+const stage = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+stage.insertBefore(renderer.domElement, stage.querySelector(".tint"));
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 200);
+
+scene.add(new THREE.HemisphereLight(0xfff3e6, 0xf0c8a0, 1.3));
+const sun = new THREE.DirectionalLight(0xffe8d2, 2.4);
+sun.position.set(-4, 8, 6);
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0xffb27a, 1.2);
+rim.position.set(6, 2, -6);
+scene.add(rim);
+
+/* ===================== jet ===================== */
+const jetPivot = new THREE.Group();   // scroll-driven yaw / bank
+const jetBob = new THREE.Group();     // idle float
+scene.add(jetPivot);
+jetPivot.add(jetBob);
+
+const ORANGE = 0xff6a14;
+const matWhite = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.22, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.08 });
+const matOrange = new THREE.MeshPhysicalMaterial({ color: ORANGE, roughness: 0.3, metalness: 0.1, clearcoat: 0.8, clearcoatRoughness: 0.12 });
+const matDark = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.15, metalness: 0.6 });
+const matMetal = new THREE.MeshStandardMaterial({ color: 0xd8dade, roughness: 0.25, metalness: 0.9 });
+
+let enginePoints = [new THREE.Vector3(-1.45, 0.32, 0.56), new THREE.Vector3(-1.45, 0.32, -0.56)];
+let jetLength = 4.6;
+
+// Stand-in jet so the scene works before the Higgsfield GLB exists.
+function buildStandInJet() {
+  const g = new THREE.Group();
+  // fuselage (lathe along Y, rotated so nose = +X)
+  const pts = [];
+  const N = 48;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    let r;
+    if (t < 0.3) r = 0.07 + (0.36 - 0.07) * Math.sin((t / 0.3) * Math.PI / 2);
+    else if (t < 0.8) r = 0.36;
+    else r = 0.36 * Math.sqrt(Math.max(0, 1 - ((t - 0.8) / 0.2) ** 2));
+    pts.push(new THREE.Vector2(Math.max(r, 0.001), -2.2 + t * 4.4));
+  }
+  const fuseGeo = new THREE.LatheGeometry(pts, 64);
+  fuseGeo.rotateZ(-Math.PI / 2);
+  const fuseMat = matWhite.clone();
+  fuseMat.map = fuselageTexture();
+  g.add(new THREE.Mesh(fuseGeo, fuseMat));
+
+  // wings
+  const wing = (side) => {
+    const s = new THREE.Shape();
+    s.moveTo(0.35, 0); s.lineTo(-0.75, 0);
+    s.lineTo(-1.42, side * 2.55); s.lineTo(-1.08, side * 2.55); s.closePath();
+    const geo = new THREE.ExtrudeGeometry(s, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2 });
+    geo.rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(geo, matWhite);
+    m.position.set(0.15, -0.16, 0);
+    m.rotation.x = side * -0.06; // dihedral
+    g.add(m);
+    // winglet
+    const w = new THREE.Shape();
+    w.moveTo(0, 0); w.lineTo(-0.34, 0); w.lineTo(-0.48, 0.42); w.lineTo(-0.36, 0.42); w.closePath();
+    const wg = new THREE.ExtrudeGeometry(w, { depth: 0.025, bevelEnabled: false });
+    const wm = new THREE.Mesh(wg, matOrange);
+    wm.position.set(0.15 - 1.08, -0.04, side * 2.55);
+    wm.rotation.x = side * 0.25;
+    g.add(wm);
+  };
+  wing(1); wing(-1);
+
+  // engines
+  for (const z of [0.56, -0.56]) {
+    const eg = new THREE.CylinderGeometry(0.2, 0.17, 0.95, 32, 1, true);
+    eg.rotateZ(Math.PI / 2);
+    const e = new THREE.Mesh(eg, matOrange);
+    matOrange.side = THREE.DoubleSide;
+    e.position.set(-1.1, 0.32, z);
+    g.add(e);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.025, 12, 32), matMetal);
+    lip.rotation.y = Math.PI / 2; lip.position.set(-0.63, 0.32, z); g.add(lip);
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(0.18, 32), matDark);
+    fan.rotation.y = Math.PI / 2; fan.position.set(-0.68, 0.32, z); g.add(fan);
+    const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, Math.abs(z) - 0.2), matOrange);
+    pylon.position.set(-1.15, 0.32, z / 2 + Math.sign(z) * 0.08); g.add(pylon);
+  }
+
+  // vertical fin
+  const fin = new THREE.Shape();
+  fin.moveTo(-1.35, 0.2); fin.lineTo(-2.2, 0.2); fin.lineTo(-2.42, 1.3); fin.lineTo(-2.05, 1.3); fin.closePath();
+  const fg = new THREE.ExtrudeGeometry(fin, { depth: 0.06, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2 });
+  fg.translate(0, 0, -0.03);
+  g.add(new THREE.Mesh(fg, matOrange));
+  // horizontal stabilizer (T-tail)
+  const hs = new THREE.Shape();
+  hs.moveTo(-1.95, 0); hs.lineTo(-2.4, 0); hs.lineTo(-2.62, 1.0); hs.lineTo(-2.45, 1.0); hs.closePath();
+  for (const side of [1, -1]) {
+    const hg = new THREE.ExtrudeGeometry(hs, { depth: 0.03, bevelEnabled: false });
+    hg.rotateX(Math.PI / 2);
+    if (side < 0) hg.scale(1, 1, -1);
+    const m = new THREE.Mesh(hg, matOrange);
+    m.position.y = 1.32;
+    g.add(m);
+  }
+  return g;
+}
+
+function fuselageTexture() {
+  const W = 1024, H = 512;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, W, H);
+  const Y = (v) => (1 - v) * H;            // lathe v: 0 = tail, 1 = nose
+  // rear orange section around the engines
+  const grd = x.createLinearGradient(0, Y(0.36), 0, Y(0.22));
+  grd.addColorStop(0, "rgba(255,106,20,0)"); grd.addColorStop(1, "rgba(255,106,20,1)");
+  x.fillStyle = grd; x.fillRect(0, Y(0.36), W, Y(0) - Y(0.36));
+  // side stripes (u≈0 and u≈0.5 are the sides; 0.25 is belly, 0.75 is roof)
+  x.fillStyle = "#ff6a14";
+  // (canvas x = circumference, canvas y = length; length is ~4x more compressed)
+  for (const u of [0.035, 0.465]) x.fillRect(u * W - 7, Y(0.97), 14, Y(0.2) - Y(0.97));
+  // cabin windows
+  x.fillStyle = "#24262b";
+  for (const u of [0.925, 0.575]) {
+    for (let i = 0; i < 7; i++) {
+      const v = 0.48 + i * 0.048;
+      x.beginPath(); x.ellipse(u * W, Y(v), 19, 5, 0, 0, Math.PI * 2); x.fill();
+    }
+  }
+  // cockpit
+  for (const u of [0.66, 0.84]) {
+    x.beginPath(); x.ellipse(u * W, Y(0.905), 60, 7, 0, 0, Math.PI * 2); x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+const standIn = buildStandInJet();
+jetBob.add(standIn);
+if (!MODEL_URL) document.getElementById("standin").style.display = "block";
+
+if (MODEL_URL) {
+  new GLTFLoader().load(MODEL_URL, (gltf) => {
+    const model = gltf.scene;
+    model.rotation.copy(MODEL_ROTATION);
+    const holder = new THREE.Group();
+    holder.add(model);
+    const box = new THREE.Box3().setFromObject(holder);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const s = jetLength / Math.max(size.x, size.z);
+    model.position.sub(center);
+    holder.scale.setScalar(s);
+    model.traverse((o) => {
+      if (o.isMesh && o.material) {
+        o.material.envMapIntensity = 1.1;
+        if ("roughness" in o.material) o.material.roughness = Math.min(o.material.roughness, 0.45);
+      }
+    });
+    // engine positions relative to the normalised model (rear-mounted twin engines)
+    const L = size.x * s, Hh = size.y * s, Wd = size.z * s;
+    enginePoints = [
+      new THREE.Vector3(-L * 0.2, Hh * 0.04, Wd * 0.1),
+      new THREE.Vector3(-L * 0.2, Hh * 0.04, -Wd * 0.1),
+    ];
+    placeTrails();
+    jetBob.remove(standIn);
+    jetBob.add(holder);
+  });
+}
+
+/* ===================== contrails ===================== */
+const trailMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  uniforms: { uTime: { value: 0 }, uOpacity: { value: 0.75 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
+  fragmentShader: `
+    varying vec2 vUv; uniform float uTime; uniform float uOpacity;
+    void main(){
+      float along = vUv.x;                       // 0 = engine, 1 = tail end
+      float across = abs(vUv.y - .5) * 2.;
+      float width = mix(.25, 1., along);
+      float core = 1. - smoothstep(0., width, across);
+      core *= core;
+      float fade = pow(1. - along, 1.4) * smoothstep(0., .05, along);
+      float flicker = .9 + .1 * sin(along * 40. - uTime * 18.);
+      vec3 col = mix(vec3(1., .93, .84), vec3(1.), along);
+      gl_FragColor = vec4(col * 1.25, min(1., core * fade * flicker * uOpacity * 1.6));
+    }`,
+});
+const trails = [];
+function placeTrails() {
+  trails.forEach((t) => t.parent && t.parent.remove(t));
+  trails.length = 0;
+  for (const p of enginePoints) {
+    const len = 9;
+    const geo = new THREE.PlaneGeometry(len, 0.55, 1, 1);
+    geo.translate(-len / 2, 0, 0);
+    // u: 0 at engine
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
+    const a = new THREE.Mesh(geo, trailMat);
+    const b = a.clone(); b.rotation.x = Math.PI / 2;
+    const grp = new THREE.Group(); grp.add(a, b);
+    grp.position.copy(p).add(new THREE.Vector3(-0.42, 0, 0));
+    jetBob.add(grp);
+    trails.push(grp);
+  }
+}
+placeTrails();
+
+/* ===================== glow ring + radar ===================== */
+const ringMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.NormalBlending,
+  uniforms: { uOpacity: { value: 1 }, uFill: { value: 0.35 }, uColor: { value: new THREE.Color(0xff7a2a) } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
+  fragmentShader: `
+    varying vec2 vUv; uniform float uOpacity; uniform float uFill; uniform vec3 uColor;
+    void main(){
+      float r = length(vUv - .5) * 2.;
+      float rimLine = 1. - smoothstep(0., .06, abs(r - .9));
+      float halo = (1. - smoothstep(0., .35, abs(r - .9))) * .55;
+      float fill = (1. - smoothstep(.2, 1., r)) * uFill;
+      vec3 col = mix(uColor, vec3(1., .97, .92), rimLine * .55);
+      float a = (rimLine + halo + fill) * (1. - smoothstep(.93, 1., r));
+      gl_FragColor = vec4(col, a * uOpacity);
+    }`,
+});
+const glowRing = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 3.6), ringMat);
+glowRing.rotation.x = -Math.PI / 2;
+glowRing.position.y = -0.85;
+scene.add(glowRing);
+
+// radar group for section 2
+const radar = new THREE.Group();
+radar.position.y = -0.85;
+scene.add(radar);
+
+const lineRingMat = (op) => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: op, depthWrite: false });
+const radarRings = [];
+[[2.6, 0.035], [4.3, 0.03], [6.4, 0.025], [9.0, 0.02]].forEach(([r, w], i) => {
+  const m = new THREE.Mesh(new THREE.RingGeometry(r - w, r + w, 160), lineRingMat(0));
+  m.rotation.x = -Math.PI / 2;
+  m.userData = { base: [0.85, 0.7, 0.55, 0.4][i] };
+  radar.add(m); radarRings.push(m);
+});
+const pulseMat = ringMat.clone();
+pulseMat.uniforms = THREE.UniformsUtils.clone(ringMat.uniforms);
+pulseMat.uniforms.uColor.value = new THREE.Color(0xffffff);
+pulseMat.uniforms.uFill.value = 0.55;
+const pulse = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), pulseMat);
+pulse.rotation.x = -Math.PI / 2;
+radar.add(pulse);
+
+// tiny aircraft markers on the radar plane
+function planeIconTexture() {
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const x = c.getContext("2d");
+  x.translate(64, 64); x.fillStyle = "#ffffff";
+  x.beginPath();
+  x.moveTo(0, -50); x.quadraticCurveTo(7, -40, 7, -18);
+  x.lineTo(48, 6); x.lineTo(48, 14); x.lineTo(7, 4);
+  x.lineTo(6, 32); x.lineTo(18, 42); x.lineTo(18, 48); x.lineTo(0, 42);
+  x.lineTo(-18, 48); x.lineTo(-18, 42); x.lineTo(-6, 32);
+  x.lineTo(-7, 4); x.lineTo(-48, 14); x.lineTo(-48, 6); x.lineTo(-7, -18);
+  x.quadraticCurveTo(-7, -40, 0, -50); x.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const iconTex = planeIconTexture();
+const icons = [];
+const rand = mulberry(7);
+for (let i = 0; i < 16; i++) {
+  const ring = 1 + Math.floor(rand() * 3);
+  const r = [2.6, 4.3, 6.4, 9.0][ring] + (rand() - 0.5) * 0.5;
+  const a = rand() * Math.PI * 2;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32),
+    new THREE.MeshBasicMaterial({ map: iconTex, transparent: true, opacity: 0, depthWrite: false, color: i % 4 === 0 ? 0xff7a2a : 0xffffff }));
+  m.rotation.x = -Math.PI / 2;
+  m.userData = { r, a, speed: (0.02 + rand() * 0.05) * (rand() > 0.5 ? 1 : -1), delay: rand() * 0.25 };
+  radar.add(m); icons.push(m);
+}
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* ===================== scroll choreography ===================== */
+const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const range = (p, a, b) => clamp01((p - a) / (b - a));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// camera keyframes: hero (side, slightly above) -> tracking (high, looking down)
+const CAM_A = { pos: new THREE.Vector3(0.3, 1.05, 11.2), look: new THREE.Vector3(0, 0.25, 0) };
+const CAM_B = { pos: new THREE.Vector3(0.0, 12.8, 9.6), look: new THREE.Vector3(0, -0.9, -0.2) };
+// jet yaw (nose +X rotated about Y): hero nose toward lower-left/viewer, tracking nose toward upper-left
+const YAW_A = 3.42, YAW_B = 2.42;
+
+let target = 0, prog = 0;
+const mouse = new THREE.Vector2(), mouseS = new THREE.Vector2();
+addEventListener("pointermove", (e) => {
+  mouse.set(e.clientX / innerWidth * 2 - 1, e.clientY / innerHeight * 2 - 1);
+});
+function readScroll() {
+  const max = document.documentElement.scrollHeight - innerHeight;
+  target = max > 0 ? clamp01(scrollY / max) : 0;
+}
+addEventListener("scroll", readScroll, { passive: true });
+readScroll();
+
+const headline = document.getElementById("headline");
+const pillA = document.querySelector(".pill .a");
+const pillB = document.querySelector(".pill .b");
+const s2head = document.getElementById("s2head");
+
+function layoutFit() {
+  // pull the camera back on narrow screens so the wings fit
+  const aspect = innerWidth / innerHeight;
+  return aspect < 1 ? 1 + (1 - aspect) * 1.1 : 1;
+}
+
+const clock = new THREE.Clock();
+const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
+
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  prog += (target - prog) * (1 - Math.pow(0.0015, dt));   // smoothed scroll
+  mouseS.lerp(mouse, 1 - Math.pow(0.02, dt));
+  const p = prog;
+
+  // ---- camera: orbit up from side view to top-down
+  const k = ease(range(p, 0.08, 0.92));
+  const fit = layoutFit();
+  camPos.lerpVectors(CAM_A.pos, CAM_B.pos, k).multiplyScalar(fit);
+  camLook.lerpVectors(CAM_A.look, CAM_B.look, k);
+  camPos.x += mouseS.x * 0.35; camPos.y += -mouseS.y * 0.2;
+  camera.position.copy(camPos);
+  camera.lookAt(camLook);
+
+  // ---- jet: yaw + bank, plus idle float
+  jetPivot.rotation.y = lerp(YAW_A, YAW_B, k);
+  jetPivot.rotation.x = lerp(0.12, -0.04, k);   // bank
+  jetPivot.rotation.z = lerp(0.06, 0.0, k);     // slight nose pitch
+  jetBob.position.y = Math.sin(t * 0.9) * 0.06;
+  jetBob.rotation.x = Math.sin(t * 0.7) * 0.025;
+  jetBob.rotation.z = Math.sin(t * 0.55 + 1) * 0.015;
+  trailMat.uniforms.uTime.value = t;
+
+  // ---- glow ring: expands outward and dissolves while leaving the hero
+  const r1 = range(p, 0.0, 0.3);
+  glowRing.scale.setScalar(1 + ease(r1) * 2.6);
+  ringMat.uniforms.uOpacity.value = (1 - ease(r1)) * (0.9 + Math.sin(t * 2.2) * 0.1);
+  glowRing.position.y = -0.85 + jetBob.position.y * 0.4;
+
+  // ---- radar: concentric rings + markers grow in for section 2
+  const r2 = ease(range(p, 0.5, 0.95));
+  radar.scale.setScalar(lerp(0.35, 1, r2));
+  radarRings.forEach((m, i) => {
+    const local = range(p, 0.5 + i * 0.07, 0.75 + i * 0.07);
+    m.material.opacity = ease(local) * m.userData.base;
+  });
+  const pulseCycle = (t * 0.35) % 1;
+  const pulseOn = range(p, 0.55, 0.75);
+  pulse.scale.setScalar(lerp(2.2, 11, pulseCycle));
+  pulseMat.uniforms.uOpacity.value = pulseOn * (1 - pulseCycle) * 0.75;
+  icons.forEach((m) => {
+    const u = m.userData;
+    const vis = ease(range(p, 0.62 + u.delay, 0.82 + u.delay));
+    const a = u.a + t * u.speed;
+    m.position.set(Math.cos(a) * u.r, 0.01, Math.sin(a) * u.r);
+    m.rotation.z = -a + (u.speed > 0 ? 0 : Math.PI);
+    m.material.opacity = vis * 0.9;
+  });
+
+  // ---- DOM: headline, caption swap, section 2 header
+  const hOut = range(p, 0.0, 0.22);
+  headline.style.opacity = String(1 - hOut);
+  const outA = range(p, 0.3, 0.42), inB = range(p, 0.48, 0.6);
+  pillA.style.opacity = String(1 - outA);
+  pillA.style.filter = `blur(${outA * 6}px)`;
+  pillB.style.opacity = String(inB);
+  pillB.style.filter = `blur(${(1 - inB) * 6}px)`;
+  const sIn = ease(range(p, 0.72, 0.9));
+  s2head.style.opacity = String(sIn);
+  s2head.style.transform = `translateY(${(1 - sIn) * 12}px)`;
+  s2head.classList.toggle("on", sIn > 0.5);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  readScroll();
+});
+</script>
+</body>
+</html>
